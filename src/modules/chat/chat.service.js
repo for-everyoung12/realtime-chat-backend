@@ -1,3 +1,4 @@
+import mongoose from 'mongoose'
 import { Conversation, Message } from './chat.repo.js'
 
 export async function listConversations (userId, { cursor, limit = 20 }) {
@@ -24,4 +25,28 @@ export async function createMessage ({ conversationId, senderId, type, content, 
     $set: { lastMessage: { messageId: msg._id, senderId: msg.senderId, content: msg.content, createdAt: msg.createdAt } }
   }, { new: true })
   return msg
+}
+
+export async function markMessageRead ({ messageId, userId }) {
+  if (!isOID(messageId)) {
+    const e = new Error('INVALID_MESSAGE_ID'); e.status = 400; throw e
+  }
+  if (!isOID(userId)) {
+    const e = new Error('INVALID_USER_ID'); e.status = 400; throw e
+  }
+
+  // Lấy message để biết conversationId (phục vụ broadcast)
+  const msg = await Message.findById(messageId)
+  if (!msg) {
+    const e = new Error('MESSAGE_NOT_FOUND'); e.status = 404; throw e
+  }
+
+  // Idempotent: không thêm trùng user
+  const updated = await Message.findByIdAndUpdate(
+    messageId,
+    { $addToSet: { readBy: new mongoose.Types.ObjectId(userId) } },
+    { new: true }
+  )
+
+  return { updated, conversationId: msg.conversationId }
 }
