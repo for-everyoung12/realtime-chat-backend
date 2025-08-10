@@ -6,3 +6,8 @@ export const sendLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false
 })
+
+export const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20
+})
