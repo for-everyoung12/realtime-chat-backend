@@ -9,7 +9,7 @@ const UserSchema = new mongoose.Schema({
   lastOnline: Date,
   settings: {
     notifications: { type: Boolean, default: true },
-    theme: { type: String, default: 'light' },
+    theme: { type: String, enum: ['light', 'dark'], default: 'light' },
     allowDirectMessage: { type: Boolean, default: true }
   }
 }, { timestamps: true })

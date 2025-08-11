@@ -17,6 +17,19 @@ export const wsEventsTotal = new client.Counter({
   help: 'Total WS events by type',
   labelNames: ['type']
 })
+
+export const wsConnectedGauge = new client.Gauge({
+  name: 'ws_connected_gauge',
+  help: 'Current number of connected WS clients'
+})
+register.registerMetric(wsConnectedGauge)
+
+export const wsBroadcastTotal = new client.Counter({
+  name: 'ws_broadcast_total',
+  help: 'Total WS broadcasts by event',
+  labelNames: ['event']
+})
+
 register.registerMetric(wsEventsTotal)
 
 export function metricsMiddleware (req, res, next) {

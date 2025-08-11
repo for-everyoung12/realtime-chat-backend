@@ -4,7 +4,10 @@ import { logger } from '../obs/logger.js'
 const base = {
   host: process.env.REDIS_HOST || '127.0.0.1',
   port: Number(process.env.REDIS_PORT || 6379),
-  password: process.env.REDIS_PASSWORD || undefined
+  password: process.env.REDIS_PASSWORD || undefined,
+  lazyConnect: false,
+  maxRetriesPerRequest: 1,
+  enableAutoPipelining: true,
 }
 
 export const redis = new Redis(base)
