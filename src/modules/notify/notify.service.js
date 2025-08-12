@@ -10,7 +10,11 @@ export async function listNotifications (userId, { cursor, limit = 20, unreadOnl
       { createdAt: new Date(cursor), _id: { $lt: new mongoose.Types.ObjectId('ffffffffffffffffffffffff') } }
     ]
   }
-  const rows = await Notification.find(q).sort({ createdAt: -1, _id: -1 }).limit(limit)
+  const rows = await Notification.find(q)
+  .sort({ createdAt: -1, _id: -1 })
+  .limit(limit)
+  .select({ type:1, data:1, isRead:1, createdAt:1 })
+  .lean()
   const nextCursor = rows.length ? rows[rows.length - 1].createdAt.toISOString() : null
   return { rows, nextCursor }
 }

@@ -12,6 +12,9 @@ const UserSchema = new mongoose.Schema({
     theme: { type: String, enum: ['light', 'dark'], default: 'light' },
     allowDirectMessage: { type: Boolean, default: true }
   }
-}, { timestamps: true })
+}, { timestamps: true, strict: true  })
+
+UserSchema.index({ email: 1 }, { unique: true })  
+UserSchema.index({ lastOnline: -1 })         
 
 export const User = mongoose.model('User', UserSchema)

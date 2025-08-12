@@ -12,7 +12,10 @@ const server = http.createServer(app)
 // Socket.IO core
 const io = new Server(server, {
   path: '/socket.io',
-  cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? '*', credentials: true }
+  cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? '*', credentials: true },
+  pingInterval: 20000,
+  pingTimeout: 25000,
+  connectionStateRecovery: { maxDisconnectionDuration: 120000 }
 })
 
 // Redis adapter for horizontal scaling

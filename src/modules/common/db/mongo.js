@@ -10,7 +10,7 @@ export function connectMongo () {
     minPoolSize: Number(process.env.MONGO_POOL_SIZE || 5),
     serverSelectionTimeoutMS: 8000, // 8 seconds
     socketTimeoutMS: 30000, // 30 seconds
-    compressors: ['zstd', 'snappy'].filter(Boolean),
+    // compressors: ['zstd', 'snappy'].filter(Boolean),
    })
 
 
