@@ -1,21 +1,32 @@
+﻿// import dotenv from 'dotenv'
+// dotenv.config({ path: './.env' })
+// console.log('MONGO_URI:', process.env.MONGO_URI)
+
 import http from 'http'
 import { Server } from 'socket.io'
 import app from './app.js'
+import { connectMongo } from './modules/common/db/mongo.js'
 import { createAdapter } from '@socket.io/redis-adapter'
 import { redisPub, redisSub } from './modules/common/cache/redis.js'
 import { registerChatNamespace } from './modules/chat/chat.socket.js'
 import { logger } from './modules/common/obs/logger.js'
 
+// connect DB
+connectMongo()
+
 const port = process.env.PORT || 8080
 const server = http.createServer(app)
 
-// Socket.IO core
+// Socket.IO
 const io = new Server(server, {
   path: '/socket.io',
-  cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? '*', credentials: true }
+  cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? '*', credentials: true },
+  pingInterval: 20000,
+  pingTimeout: 25000,
+  connectionStateRecovery: { maxDisconnectionDuration: 120000 }
 })
 
-// Redis adapter for horizontal scaling
+// Redis adapter
 io.adapter(createAdapter(redisPub, redisSub))
 
 // Namespaces

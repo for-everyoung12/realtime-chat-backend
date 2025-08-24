@@ -1,6 +1,6 @@
 import { io } from "socket.io-client";
-const userId = "68976e941a7072905ef58df7";
-const conversationId = "68976e951a7072905ef58df9";
+const userId = "68996994725e35f6c4e85905";
+const conversationId = "68996fc6c38dc47143d22f4d";
 const s = io("http://localhost:8080/chat", { auth: { userId } });
 s.on("connect", () => {
   console.log("connected as", userId);

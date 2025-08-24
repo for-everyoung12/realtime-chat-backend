@@ -15,7 +15,7 @@ export async function login({ email, password }, res) {
   if (!user) throw Object.assign(new Error('INVALID_CREDENTIALS'), { status: 401 })
   const ok = await bcrypt.compare(password, user.passwordHash)
   if (!ok) throw Object.assign(new Error('INVALID_CREDENTIALS'), { status: 401 })
-  const token = signToken({ id: user._id, email: user.email })
+  const token = signToken({ id: user._id, email: user.email, name: user.name })
   setAuthCookie(res, token)
   return user
 }
