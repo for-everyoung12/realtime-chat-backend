@@ -18,6 +18,7 @@ const ConversationSchema = new mongoose.Schema({
 }, { timestamps: true, strict : true })
 // Lấy conversations của user theo thời gian cập nhật (cursor-friendly)
 ConversationSchema.index({ 'members.userId': 1, updatedAt: -1, _id: -1 })
+ConversationSchema.index({ updatedAt: -1 });
 
 // Chặn client/chỗ khác set updatedAt bậy → luôn để Mongo tự cập nhật
 ConversationSchema.pre(['updateOne','findOneAndUpdate','updateMany'], function () {
@@ -27,13 +28,12 @@ ConversationSchema.pre(['updateOne','findOneAndUpdate','updateMany'], function (
   }
 })
 
-
 const MessageSchema = new mongoose.Schema({
   conversationId: { type: mongoose.Types.ObjectId, ref: 'Conversation', index: true, required: true },
   senderId: { type: mongoose.Types.ObjectId, ref: 'User', index: true, required: true },
   type: { type: String, enum: ['text', 'image', 'file', 'system'], default: 'text' },
   content: { type: String, default: '' },
-  fileUrl: String,
+  fileUrl: { type: String }, 
   metadata: { size: Number, mimeType: String },
 
    // idempotency từ client

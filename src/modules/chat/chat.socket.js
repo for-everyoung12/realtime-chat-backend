@@ -12,7 +12,7 @@ import {
 import { redis } from "../common/cache/redis.js";
 import { User } from "../common/db/user.model.js";
 import { logger } from "../common/obs/logger.js";
-
+import { isMember } from '../common/cache/member.js'
 const TYPING_TTL_MS = 2500;
 
 // ---- helper
@@ -72,7 +72,7 @@ export function registerChatNamespace(nsp) {
         await redis.srem(key, socket.id);
 
         setTimeout(async () => {
-          const remain = await redis.smembers(key);
+          const remain = await redis.scard(key);
           if (remain.length === 0) {
             User.findByIdAndUpdate(userId, {
               $set: { status: "offline", lastOnline: new Date() },

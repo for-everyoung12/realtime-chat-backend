@@ -22,5 +22,5 @@ export async function isMember (conversationId, userId) {
 }
 
 export async function invalidateMembersCache (conversationId){
-  await redis.del`(conv:${conversationId}:members)`
+  await redis.del(`conv:${conversationId}:members`)
 }
