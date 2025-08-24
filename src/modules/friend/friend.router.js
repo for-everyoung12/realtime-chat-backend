@@ -1,38 +1,149 @@
 import { Router } from 'express'
 import { authRequired } from '../common/auth/auth.js'
-import * as svc from './friend.service.js'
+import * as friendService from './friend.service.js'
 
 const router = Router()
 router.use(authRequired)
 
+// Request friendship
 router.post('/request', async (req, res, next) => {
   try {
-    const doc = await svc.requestFriend({ requesterId: req.user.id, receiverId: req.body.receiverId })
-    res.json(doc)
-  } catch (e) { next(e) }
+    const { receiverId } = req.body
+    const friendship = await friendService.requestFriend({ 
+      requesterId: req.user.id, 
+      receiverId 
+    })
+    res.status(201).json(friendship)
+  } catch (error) {
+    next(error)
+  }
 })
 
+// Accept friendship request
 router.post('/accept', async (req, res, next) => {
   try {
-    const doc = await svc.acceptFriend({ requesterId: req.body.requesterId, receiverId: req.user.id })
-    res.json(doc)
-  } catch (e) { next(e) }
+    const { requesterId } = req.body
+    const friendship = await friendService.acceptFriend({ 
+      requesterId, 
+      receiverId: req.user.id 
+    })
+    res.json(friendship)
+  } catch (error) {
+    next(error)
+  }
 })
 
+// Reject friendship request
+router.post('/reject', async (req, res, next) => {
+  try {
+    const { requesterId } = req.body
+    const friendship = await friendService.rejectFriend({ 
+      requesterId, 
+      receiverId: req.user.id 
+    })
+    res.json(friendship)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Block user
 router.post('/block', async (req, res, next) => {
   try {
-    const doc = await svc.blockUser({ userId: req.user.id, blockedUserId: req.body.userId })
-    res.json(doc)
-  } catch (e) { next(e) }
+    const { userId } = req.body
+    const blocked = await friendService.blockUser({ 
+      userId: req.user.id, 
+      otherId: userId 
+    })
+    res.json(blocked)
+  } catch (error) {
+    next(error)
+  }
 })
 
-// list pending / accepted cho UI
+// Unblock user
+router.post('/unblock', async (req, res, next) => {
+  try {
+    const { userId } = req.body
+    const result = await friendService.unblockUser({ 
+      userId: req.user.id, 
+      otherId: userId 
+    })
+    res.json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Remove friend
+router.post('/remove', async (req, res, next) => {
+  try {
+    const { userId } = req.body
+    const result = await friendService.removeFriend({ 
+      userId: req.user.id, 
+      otherId: userId 
+    })
+    res.json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// List friends
 router.get('/list', async (req, res, next) => {
   try {
-    const { status = 'accepted' } = req.query
-    const rows = await svc.listFriends({ userId: req.user.id, status })
-    res.json({ rows })
-  } catch (e) { next(e) }
+    const { status = 'accepted', cursor, limit = 20 } = req.query
+    const result = await friendService.listFriends({ 
+      userId: req.user.id, 
+      status, 
+      cursor, 
+      limit: parseInt(limit) 
+    })
+    res.json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// List pending requests
+router.get('/pending', async (req, res, next) => {
+  try {
+    const { cursor, limit = 20 } = req.query
+    const result = await friendService.listPendingRequests({ 
+      userId: req.user.id, 
+      cursor, 
+      limit: parseInt(limit) 
+    })
+    res.json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Get friendship statistics
+router.get('/stats', async (req, res, next) => {
+  try {
+    const stats = await friendService.getFriendshipStats({ 
+      userId: req.user.id 
+    })
+    res.json(stats)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Check friendship status with another user
+router.get('/status/:userId', async (req, res, next) => {
+  try {
+    const { userId } = req.params
+    const status = await friendService.checkFriendshipStatus({ 
+      userId1: req.user.id, 
+      userId2: userId 
+    })
+    res.json(status)
+  } catch (error) {
+    next(error)
+  }
 })
 
 export default router

@@ -1,6 +1,6 @@
 import streamifier from 'streamifier'
 import { cloudinary } from '../common/thirdparty/cloudinary.js'
-import { User } from '../common/db/user.model.js'
+import { UserRepository } from './user.repo.js'
 import { validateObjectId, validateEnum, validateString } from '../common/validation.js'
 
 export async function uploadAvatarAndSave(userId, fileBuffer, mimetype) {
@@ -25,17 +25,13 @@ export async function uploadAvatarAndSave(userId, fileBuffer, mimetype) {
   const result = await uploadStream(fileBuffer)
 
   // Lấy user để xoá ảnh cũ (nếu có)
-  const prev = await User.findById(userId, { avatarPublicId: 1 })
+  const prev = await UserRepository.findById(userId, { avatarPublicId: 1 })
   if (prev?.avatarPublicId && prev.avatarPublicId !== result.public_id) {
     // xoá không chặn luồng (fire-and-forget)
     cloudinary.uploader.destroy(prev.avatarPublicId).catch(() => {})
   }
 
-  const updated = await User.findByIdAndUpdate(
-    userId,
-    { $set: { avatarUrl: result.secure_url, avatarPublicId: result.public_id } },
-    { new: true, projection: { name: 1, email: 1, avatarUrl: 1 } }
-  )
+  const updated = await UserRepository.updateAvatar(userId, result)
   return updated
 }
 
@@ -68,11 +64,11 @@ export async function listUsers({ cursor, limit = 20, role, isActive, search }) 
     ]
   }
   
-  const users = await User.find(query)
-    .sort({ createdAt: -1, _id: -1 })
-    .limit(limit)
-    .select('-passwordHash')
-    .lean()
+  const users = await UserRepository.findWithFilters(query, {
+    limit,
+    sort: { createdAt: -1, _id: -1 },
+    projection: { passwordHash: 0 }
+  })
   
   const nextCursor = users.length ? users[users.length - 1].createdAt.toISOString() : null
   return { users, nextCursor }
@@ -88,15 +84,15 @@ export async function updateUserRole(userId, newRole, updatedBy) {
   }
   
   // Only admins can assign admin role
-  const updater = await User.findById(updatedBy).select('role')
+  const updater = await UserRepository.findById(updatedBy, { role: 1 })
   if (role === 'admin' && updater.role !== 'admin') {
     throw new Error('INSUFFICIENT_PERMISSION')
   }
   
-  const user = await User.findByIdAndUpdate(
+  const user = await UserRepository.updateById(
     userId,
-    { $set: { role } },
-    { new: true, projection: { name: 1, email: 1, role: 1, isActive: 1 } }
+    { role },
+    { projection: { name: 1, email: 1, role: 1, isActive: 1 } }
   )
   
   if (!user) {
@@ -107,18 +103,7 @@ export async function updateUserRole(userId, newRole, updatedBy) {
 }
 
 export async function banUser(userId, reason, bannedBy) {
-  const user = await User.findByIdAndUpdate(
-    userId,
-    { 
-      $set: { 
-        isActive: false,
-        'settings.banReason': reason,
-        'settings.bannedBy': bannedBy,
-        'settings.bannedAt': new Date()
-      }
-    },
-    { new: true, projection: { name: 1, email: 1, isActive: 1 } }
-  )
+  const user = await UserRepository.banUser(userId, { reason, bannedBy })
   
   if (!user) {
     throw new Error('USER_NOT_FOUND')
@@ -128,18 +113,7 @@ export async function banUser(userId, reason, bannedBy) {
 }
 
 export async function unbanUser(userId, unbannedBy) {
-  const user = await User.findByIdAndUpdate(
-    userId,
-    { 
-      $set: { isActive: true },
-      $unset: { 
-        'settings.banReason': 1,
-        'settings.bannedBy': 1,
-        'settings.bannedAt': 1
-      }
-    },
-    { new: true, projection: { name: 1, email: 1, isActive: 1 } }
-  )
+  const user = await UserRepository.unbanUser(userId)
   
   if (!user) {
     throw new Error('USER_NOT_FOUND')
@@ -149,35 +123,9 @@ export async function unbanUser(userId, unbannedBy) {
 }
 
 export async function getUserStats() {
-  const stats = await User.aggregate([
-    {
-      $group: {
-        _id: null,
-        totalUsers: { $sum: 1 },
-        activeUsers: { $sum: { $cond: ['$isActive', 1, 0] } },
-        verifiedUsers: { $sum: { $cond: ['$isVerified', 1, 0] } },
-        onlineUsers: { $sum: { $cond: [{ $eq: ['$status', 'online'] }, 1, 0] } }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalUsers: 1,
-        activeUsers: 1,
-        verifiedUsers: 1,
-        onlineUsers: 1,
-        inactiveUsers: { $subtract: ['$totalUsers', '$activeUsers'] }
-      }
-    }
-  ])
-  
-  const roleStats = await User.aggregate([
-    {
-      $group: {
-        _id: '$role',
-        count: { $sum: 1 }
-      }
-    }
+  const [stats, roleStats] = await Promise.all([
+    UserRepository.getStats(),
+    UserRepository.getRoleStats()
   ])
   
   return {
@@ -200,10 +148,10 @@ export async function updateUserProfile(userId, updates) {
     }
   }
   
-  const user = await User.findByIdAndUpdate(
+  const user = await UserRepository.updateById(
     userId,
-    { $set: updateData },
-    { new: true, projection: { name: 1, email: 1, avatarUrl: 1, settings: 1, role: 1 } }
+    updateData,
+    { projection: { name: 1, email: 1, avatarUrl: 1, settings: 1, role: 1 } }
   )
   
   if (!user) {
@@ -214,16 +162,24 @@ export async function updateUserProfile(userId, updates) {
 }
 
 export async function getUserProfile(userId, requesterId) {
-  const user = await User.findById(userId)
-    .select('name email avatarUrl status lastOnline settings role isActive isVerified')
-    .lean()
+  const user = await UserRepository.findById(userId, {
+    name: 1,
+    email: 1,
+    avatarUrl: 1,
+    status: 1,
+    lastOnline: 1,
+    settings: 1,
+    role: 1,
+    isActive: 1,
+    isVerified: 1
+  })
   
   if (!user) {
     throw new Error('USER_NOT_FOUND')
   }
   
   // Check privacy settings
-  const requester = await User.findById(requesterId).select('role')
+  const requester = await UserRepository.findById(requesterId, { role: 1 })
   const isAdmin = requester.role === 'admin'
   const isSelf = String(userId) === String(requesterId)
   

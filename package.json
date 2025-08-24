@@ -4,9 +4,9 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "dev": "node --env-file=.env src/server.js",
+    "dev": "node src/server.js",
     "start": "node --env-file=.env src/server.js",
-    "start:pm2": "pm2-runtime ecosystem.config.cjs",
+    "start:pm2": "pm2-runtime ecosystem.config.js",
     "seed": "node --env-file=.env scripts/seed.js",
     "ws:test": "node scripts/test-socket.js",
     "lint": "eslint ."
@@ -29,7 +29,6 @@
     "multer": "^2.0.2",
     "pino": "^9.2.0",
     "pino-http": "^10.2.0",
-    "pm2": "^6.0.8",
     "prom-client": "^15.1.3",
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.8.1",
