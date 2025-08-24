@@ -24,7 +24,7 @@ router.post('/conversations', authRequired, async (req, res) => {
   if (!Array.isArray(memberIds) || memberIds.some(id => !isOID(id))) {
     return res.status(400).json({ error: 'INVALID_MEMBER_ID' })
   }
-  const conv = await createConversation({ type, name, memberIds })
+  const conv = await createConversation({ type, name, memberIds, creatorId: req.user.id })
   res.status(201).json(conv)
 })
 

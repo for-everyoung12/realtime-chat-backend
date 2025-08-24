@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { login, logout, register } from './auth.service.js'
 import { authRequired } from './auth.js'
-import { User} from '../db/user.model.js'
+import { User } from '../db/user.model.js'
 
 const router = Router()
 
@@ -34,7 +34,7 @@ router.post('/logout', authRequired, async (req, res) => {
 
 // GET /v1/auth/me
 router.get('/me', authRequired, async (req, res) => {
-  res.json({ id: req.user.id, email: req.user.email, name: req.user.name})
+  res.json({ id: req.user.id, email: req.user.email, name: req.user.name })
 })
 
 // PATCH /v1/auth/status
@@ -55,7 +55,9 @@ router.patch('/status', authRequired, async (req, res) => {
     { new: true }
   ).select({ name: 1, email: 1, status: 1, lastOnline: 1, updatedAt: 1 })
 
-  if (!updated) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+  if (!updated) {
+    return res.status(404).json({ error: 'USER_NOT_FOUND' })
+  }
   res.json({ ok: true, user: updated })
 })
 
