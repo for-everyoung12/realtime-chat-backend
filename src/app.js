@@ -4,12 +4,13 @@ import helmet from 'helmet'
 import compression from 'compression'
 import cookieParser from 'cookie-parser'
 import pinoHttp from 'pino-http'
-import { connectMongo } from './modules/common/db/mongo.js'
 import { logger } from './modules/common/obs/logger.js'
 import { metricsMiddleware, metricsRouter } from './modules/common/obs/metrics.js'
 import { checkRedisHealth } from './modules/common/cache/redis.js'
 import { apiRouter } from './routes.js'
 import mongoose from 'mongoose'
+import { specs, swaggerUiOptions } from './modules/common/docs/swagger.js'
+import swaggerUi from 'swagger-ui-express'
 
 const app = express()
 
@@ -25,31 +26,22 @@ const ALLOW_ALL = CORS_LIST.includes('*')
 
 const corsOptions = {
   origin(origin, cb) {
-    // Cho phép server-to-server, curl, Postman (không có Origin header)
-    if (!origin) return cb(null, true)
-
-    if (ALLOW_ALL || CORS_LIST.includes(origin)) {
-      // echo origin thay vì '*' để credentials hoạt động đúng chuẩn
-      return cb(null, true)
-    }
+    if (!origin) return cb(null, true) // allow server-to-server, curl, Postman
+    if (ALLOW_ALL || CORS_LIST.includes(origin)) return cb(null, true)
     return cb(new Error('CORS_NOT_ALLOWED'), false)
   },
   credentials: true,
   methods: ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  maxAge: 86400 // preflight cache 1 ngày
+  maxAge: 86400
 }
 app.use(cors(corsOptions))
-// Preflight cho mọi route
 app.options('*', cors({ ...corsOptions, origin: true }))
 
 app.use(compression())
 app.use(cookieParser())
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true, limit: '2mb' }))
-
-// ===== Database =====
-connectMongo()
 
 // ===== Health & Metrics =====
 app.get('/health', async (req, res) => {
@@ -64,7 +56,6 @@ app.get('/health', async (req, res) => {
         redis: await checkRedisHealth() ? 'connected' : 'disconnected'
       }
     }
-    
     const allHealthy = health.services.mongodb === 'connected' && health.services.redis === 'connected'
     res.status(allHealthy ? 200 : 503).json(health)
   } catch (error) {
@@ -76,6 +67,9 @@ app.get('/health', async (req, res) => {
   }
 })
 app.use(process.env.METRICS_ROUTE || '/metrics', metricsRouter)
+
+// ===== API Documentation =====
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerUiOptions))
 
 // ===== API v1 =====
 app.use('/v1', apiRouter)

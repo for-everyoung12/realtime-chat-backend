@@ -10,17 +10,23 @@ export function connectMongo() {
   mongoose.set('strictQuery', true)
   
   const options = {
-    dbName: process.env.MONGO_DB,
-    maxPoolSize: Number(process.env.MONGO_POOL_SIZE || 50),
-    minPoolSize: Number(process.env.MONGO_POOL_SIZE || 5),
-    serverSelectionTimeoutMS: 8000,
-    socketTimeoutMS: 30000,
-    connectTimeoutMS: 10000,
-    heartbeatFrequencyMS: 10000,
+    dbName: process.env.MONGO_DB || 'chat-app',
+    maxPoolSize: Number(process.env.MONGO_POOL_SIZE || "10", 10),
+    minPoolSize: Number(process.env.MONGO_POOL_SIZE || 1),
+    serverSelectionTimeoutMS: 60000,
+    socketTimeoutMS: 60000,
+    connectTimeoutMS: 60000,
+    heartbeatFrequencyMS: 60000,
     retryWrites: true,
     retryReads: true,
     // Enable compression if available
-    compressors: ['zstd', 'snappy'].filter(Boolean),
+    // compressors: ['zstd', 'snappy'].filter(Boolean),
+    // Add more stable connection options
+    bufferCommands: true,
+    autoIndex: true,
+    autoCreate: true,
+    // Keep connection alive
+    keepAliveInitialDelay: 300000,
   }
 
   mongoose.connect(uri, options)
