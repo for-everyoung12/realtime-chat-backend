@@ -23,7 +23,7 @@ export async function markRead (id, userId) {
   const updated = await Notification.findOneAndUpdate(
     { _id: id, userId },
     { $set: { isRead: true } },
-    { new: true }
+    { new: true }   
   )
   if (!updated) { const e = new Error('NOTIFICATION_NOT_FOUND'); e.status = 404; throw e }
   return updated
