@@ -2,7 +2,7 @@ import mongoose from 'mongoose'
 
 const NotificationSchema = new mongoose.Schema({
   userId: { type: mongoose.Types.ObjectId, ref: 'User', index: true, required: true },
-  type:   { type: String, enum: ['new_message','mention','invite_group','friend_request'], required: true },
+  type:   { type: String, enum: ['new_message','mention','invite_group','friend_request','friend_accepted','friend_rejected','friend_removed'], required: true },
   data:   { type: Object, default: {} },
   isRead: { type: Boolean, default: false, index: true }
 }, { timestamps: true })

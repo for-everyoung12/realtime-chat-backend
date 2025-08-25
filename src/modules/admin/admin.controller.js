@@ -9,6 +9,18 @@ import mongoose from 'mongoose'
 
 const router = Router()
 
+/**
+ * @swagger
+ * /v1/admin/dashboard:
+ *   get:
+ *     tags: ["Admin"]
+ *     summary: Get admin dashboard analytics
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard stats
+ */
 // GET /v1/admin/dashboard
 router.get('/dashboard', authRequired, requirePermission('view_analytics'), async (req, res) => {
   try {
@@ -68,6 +80,37 @@ router.get('/dashboard', authRequired, requirePermission('view_analytics'), asyn
   }
 })
 
+/**
+ * @swagger
+ * /v1/admin/conversations:
+ *   get:
+ *     tags: ["Admin"]
+ *     summary: List all conversations (admin)
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [single, group]
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Conversation list
+ */
 // GET /v1/admin/conversations
 router.get('/conversations', authRequired, requirePermission('view_all_conversations'), async (req, res) => {
   try {
@@ -105,6 +148,24 @@ router.get('/conversations', authRequired, requirePermission('view_all_conversat
   }
 })
 
+/**
+ * @swagger
+ * /v1/admin/conversations/{id}:
+ *   delete:
+ *     tags: ["Admin"]
+ *     summary: Delete a conversation and its messages
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Conversation deleted
+ */
 // DELETE /v1/admin/conversations/:id
 router.delete('/conversations/:id', authRequired, requirePermission('delete_conversations'), async (req, res) => {
   try {
@@ -122,6 +183,40 @@ router.delete('/conversations/:id', authRequired, requirePermission('delete_conv
   }
 })
 
+/**
+ * @swagger
+ * /v1/admin/messages:
+ *   get:
+ *     tags: ["Admin"]
+ *     summary: List messages with filters (admin)
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: conversationId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: senderId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Message list
+ */
 // GET /v1/admin/messages
 router.get('/messages', authRequired, requirePermission('moderate_messages'), async (req, res) => {
   try {
@@ -164,6 +259,24 @@ router.get('/messages', authRequired, requirePermission('moderate_messages'), as
   }
 })
 
+/**
+ * @swagger
+ * /v1/admin/messages/{id}:
+ *   delete:
+ *     tags: ["Admin"]
+ *     summary: Delete a message
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Message deleted
+ */
 // DELETE /v1/admin/messages/:id
 router.delete('/messages/:id', authRequired, requirePermission('delete_messages'), async (req, res) => {
   try {
@@ -178,6 +291,36 @@ router.delete('/messages/:id', authRequired, requirePermission('delete_messages'
   }
 })
 
+/**
+ * @swagger
+ * /v1/admin/notifications:
+ *   get:
+ *     tags: ["Admin"]
+ *     summary: List notifications (admin)
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: isRead
+ *         schema:
+ *           type: boolean
+ *     responses:
+ *       200:
+ *         description: Notification list
+ */
 // GET /v1/admin/notifications
 router.get('/notifications', authRequired, requirePermission('view_analytics'), async (req, res) => {
   try {
@@ -215,6 +358,18 @@ router.get('/notifications', authRequired, requirePermission('view_analytics'), 
   }
 })
 
+/**
+ * @swagger
+ * /v1/admin/system/health:
+ *   get:
+ *     tags: ["Admin"]
+ *     summary: Get system health
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Health info
+ */
 // GET /v1/admin/system/health
 router.get('/system/health', authRequired, requirePermission('view_analytics'), async (req, res) => {
   try {
