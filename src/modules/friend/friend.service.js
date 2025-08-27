@@ -1,65 +1,69 @@
+import mongoose from 'mongoose'
 import { validateObjectId } from '../common/validation.js'
 import { FriendRepository } from './friend.repo.js'
 import { createNotify } from '../notify/notify.service.js'
-import { 
-  FRIENDSHIP_STATUS, 
-  FRIENDSHIP_ERRORS, 
+import {
+  FRIENDSHIP_STATUS,
+  FRIENDSHIP_ERRORS,
   VALIDATION_LIMITS,
-  FRIENDSHIP_NOTIFICATIONS 
+  FRIENDSHIP_NOTIFICATIONS
 } from './friend.types.js'
 
-// Helper function to check if two IDs are equal
+// utils
 const isEqual = (a, b) => String(a) === String(b)
+const throwError = (message, status = 400) => { const e = new Error(message); e.status = status; throw e }
 
-// Helper function to throw validation errors
-const throwError = (message, status = 400) => {
-  const error = new Error(message)
-  error.status = status
-  throw error
+// Cursor helpers (keyset with updatedAt + _id)
+const encodeCursor = (doc) =>
+  Buffer.from(JSON.stringify({ t: (doc.updatedAt ?? doc.createdAt).toISOString(), id: String(doc._id) }), 'utf8').toString('base64')
+
+const decodeCursor = (s) => {
+  if (!s) return null
+  try {
+    const { t, id } = JSON.parse(Buffer.from(s, 'base64').toString('utf8'))
+    return { t: new Date(t), id }
+  } catch { return null }
 }
 
+const buildCursorCond = (cursor) => {
+  if (!cursor) return null
+  const t = new Date(cursor.t)
+  if (isNaN(t)) return null
+  return {
+    $or: [
+      { updatedAt: { $lt: t } },
+      { updatedAt: t, _id: { $lt: new mongoose.Types.ObjectId(cursor.id) } }
+    ]
+  }
+}
+
+// ---- Commands
+
 export async function requestFriend({ requesterId, receiverId }) {
-  // Validation
   if (!validateObjectId(requesterId) || !validateObjectId(receiverId)) {
     throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
   }
-  
-  if (isEqual(requesterId, receiverId)) {
-    throwError(FRIENDSHIP_ERRORS.SELF_REQUEST, 400)
-  }
+  if (isEqual(requesterId, receiverId)) throwError(FRIENDSHIP_ERRORS.SELF_REQUEST, 400)
 
-  // Check existing friendship
   const existing = await FriendRepository.findFriendship(requesterId, receiverId)
-  
   if (existing) {
-    if (existing.status === FRIENDSHIP_STATUS.BLOCKED) {
-      throwError(FRIENDSHIP_ERRORS.BLOCKED, 409)
-    }
-    if (existing.status === FRIENDSHIP_STATUS.ACCEPTED) {
-      throwError(FRIENDSHIP_ERRORS.ALREADY_FRIENDS, 409)
-    }
+    if (existing.status === FRIENDSHIP_STATUS.BLOCKED) throwError(FRIENDSHIP_ERRORS.BLOCKED, 409)
+    if (existing.status === FRIENDSHIP_STATUS.ACCEPTED) throwError(FRIENDSHIP_ERRORS.ALREADY_FRIENDS, 409)
     if (existing.status === FRIENDSHIP_STATUS.PENDING) {
-      if (isEqual(existing.requesterId, requesterId)) {
-        throwError(FRIENDSHIP_ERRORS.ALREADY_REQUESTED, 409)
-      }
+      if (isEqual(existing.requesterId, requesterId)) throwError(FRIENDSHIP_ERRORS.ALREADY_REQUESTED, 409)
       throwError(FRIENDSHIP_ERRORS.ALREADY_PENDING_REVERSE, 409)
     }
   }
 
-  // Check limits
   const pendingCount = await FriendRepository.findPendingRequests(requesterId, { limit: 1 })
   if (pendingCount.length >= VALIDATION_LIMITS.MAX_PENDING_REQUESTS) {
     throwError(FRIENDSHIP_ERRORS.MAX_PENDING_REACHED, 429)
   }
 
-  // Create friendship request
-  const friendship = await FriendRepository.create({ 
-    requesterId, 
-    receiverId, 
-    status: FRIENDSHIP_STATUS.PENDING 
+  const friendship = await FriendRepository.create({
+    requesterId, receiverId, status: FRIENDSHIP_STATUS.PENDING
   })
 
-  // Send notification
   await createNotify({
     userId: receiverId,
     type: FRIENDSHIP_NOTIFICATIONS.FRIEND_REQUEST,
@@ -70,29 +74,22 @@ export async function requestFriend({ requesterId, receiverId }) {
 }
 
 export async function acceptFriend({ requesterId, receiverId }) {
-  // Validation
   if (!validateObjectId(requesterId) || !validateObjectId(receiverId)) {
     throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
   }
 
-  // Check limits
-  const friendsCount = await FriendRepository.findFriendshipsByUser(receiverId, FRIENDSHIP_STATUS.ACCEPTED, { limit: 1 })
+  const friendsCount = await FriendRepository.findFriendshipsByUser(
+    receiverId, FRIENDSHIP_STATUS.ACCEPTED, { limit: 1 }
+  )
   if (friendsCount.length >= VALIDATION_LIMITS.MAX_FRIENDS) {
     throwError(FRIENDSHIP_ERRORS.MAX_FRIENDS_REACHED, 429)
   }
 
-  // Update friendship status
   const updated = await FriendRepository.updateStatus(
-    requesterId, 
-    receiverId, 
-    FRIENDSHIP_STATUS.ACCEPTED
+    requesterId, receiverId, FRIENDSHIP_STATUS.ACCEPTED
   )
+  if (!updated) throwError(FRIENDSHIP_ERRORS.REQUEST_NOT_FOUND, 404)
 
-  if (!updated) {
-    throwError(FRIENDSHIP_ERRORS.REQUEST_NOT_FOUND, 404)
-  }
-
-  // Send notification
   await createNotify({
     userId: requesterId,
     type: FRIENDSHIP_NOTIFICATIONS.FRIEND_ACCEPTED,
@@ -103,23 +100,15 @@ export async function acceptFriend({ requesterId, receiverId }) {
 }
 
 export async function rejectFriend({ requesterId, receiverId }) {
-  // Validation
   if (!validateObjectId(requesterId) || !validateObjectId(receiverId)) {
     throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
   }
 
-  // Update friendship status
   const updated = await FriendRepository.updateStatus(
-    requesterId, 
-    receiverId, 
-    FRIENDSHIP_STATUS.REJECTED
+    requesterId, receiverId, FRIENDSHIP_STATUS.REJECTED
   )
+  if (!updated) throwError(FRIENDSHIP_ERRORS.REQUEST_NOT_FOUND, 404)
 
-  if (!updated) {
-    throwError(FRIENDSHIP_ERRORS.REQUEST_NOT_FOUND, 404)
-  }
-
-  // Send notification
   await createNotify({
     userId: requesterId,
     type: FRIENDSHIP_NOTIFICATIONS.FRIEND_REJECTED,
@@ -130,25 +119,20 @@ export async function rejectFriend({ requesterId, receiverId }) {
 }
 
 export async function blockUser({ userId, otherId }) {
-  // Validation
   if (!validateObjectId(userId) || !validateObjectId(otherId)) {
     throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
   }
-  
-  if (isEqual(userId, otherId)) {
-    throwError(FRIENDSHIP_ERRORS.SELF_BLOCK, 400)
-  }
+  if (isEqual(userId, otherId)) throwError(FRIENDSHIP_ERRORS.SELF_BLOCK, 400)
 
-  // Check limits
-  const blockedCount = await FriendRepository.findFriendshipsByUser(userId, FRIENDSHIP_STATUS.BLOCKED, { limit: 1 })
+  const blockedCount = await FriendRepository.findFriendshipsByUser(
+    userId, FRIENDSHIP_STATUS.BLOCKED, { limit: 1 }
+  )
   if (blockedCount.length >= VALIDATION_LIMITS.MAX_BLOCKED_USERS) {
     throwError(FRIENDSHIP_ERRORS.MAX_BLOCKED_REACHED, 429)
   }
 
-  // Delete existing friendships
   await FriendRepository.deleteFriendship(userId, otherId)
 
-  // Create blocked relationship
   const blocked = await FriendRepository.create({
     requesterId: userId,
     receiverId: otherId,
@@ -156,121 +140,124 @@ export async function blockUser({ userId, otherId }) {
     blockedBy: userId,
     blockedAt: new Date()
   })
-
   return blocked
 }
 
 export async function unblockUser({ userId, otherId }) {
-  // Validation
   if (!validateObjectId(userId) || !validateObjectId(otherId)) {
     throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
   }
-
-  // Check if user is blocked by the current user
   const isBlocked = await FriendRepository.isBlocked(userId, otherId)
-  if (!isBlocked) {
-    throwError(FRIENDSHIP_ERRORS.FRIENDSHIP_NOT_FOUND, 404)
-  }
+  if (!isBlocked) throwError(FRIENDSHIP_ERRORS.FRIENDSHIP_NOT_FOUND, 404)
 
-  // Delete the blocked relationship
   await FriendRepository.deleteFriendship(userId, otherId)
-
   return { success: true }
 }
 
 export async function removeFriend({ userId, otherId }) {
-  // Validation
   if (!validateObjectId(userId) || !validateObjectId(otherId)) {
     throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
   }
-
-  // Check if they are friends
   const areFriends = await FriendRepository.areFriends(userId, otherId)
-  if (!areFriends) {
-    throwError(FRIENDSHIP_ERRORS.FRIENDSHIP_NOT_FOUND, 404)
-  }
+  if (!areFriends) throwError(FRIENDSHIP_ERRORS.FRIENDSHIP_NOT_FOUND, 404)
 
-  // Delete the friendship
   await FriendRepository.deleteFriendship(userId, otherId)
-
-  // Send notification
   await createNotify({
     userId: otherId,
     type: FRIENDSHIP_NOTIFICATIONS.FRIEND_REMOVED,
     data: { removedBy: userId }
   })
-
   return { success: true }
 }
 
-export async function listFriends({ userId, status = FRIENDSHIP_STATUS.ACCEPTED, cursor, limit = 20 }) {
-  // Validation
-  if (!validateObjectId(userId)) {
-    throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
-  }
+// ---- Queries
 
-  const friendships = await FriendRepository.findFriendshipsByUser(userId, status, {
-    limit: Math.min(limit, VALIDATION_LIMITS.MAX_LIMIT),
-    cursor,
+export async function listFriends({
+  userId, status = FRIENDSHIP_STATUS.ACCEPTED, cursor, limit = 20, search, online
+}) {
+  if (!validateObjectId(userId)) throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
+
+  const pageSize = Math.min(limit, VALIDATION_LIMITS.MAX_LIMIT)
+  const cur = decodeCursor(cursor)
+  const cursorCond = buildCursorCond(cur)
+
+  // fetch +1 to detect hasMore
+  const rows = await FriendRepository.findFriendshipsByUser(userId, status, {
+    limit: pageSize + 1,
+    cursorCond,
     populate: true
   })
 
-  const nextCursor = friendships.length ? friendships[friendships.length - 1].createdAt.toISOString() : null
+  // post-filter (nếu muốn chuyển sang aggregate thì có thể refactor sang repo)
+  const filtered = rows.filter(r => {
+    const me = String(userId)
+    const peer = String(r.requesterId?._id) === me ? r.receiverId : r.requesterId
+    const okSearch = !search
+      || new RegExp(search, 'i').test(peer?.name || '')
+      || new RegExp(search, 'i').test(peer?.email || '')
+    const okOnline = online ? (peer?.status === 'online') : true
+    return okSearch && okOnline
+  })
 
-  return { 
-    friendships, 
-    nextCursor,
-    total: friendships.length
-  }
+  const hasMore = filtered.length > pageSize
+  const data = hasMore ? filtered.slice(0, pageSize) : filtered
+
+  const items = data.map(doc => {
+    const me = String(userId)
+    const peer = String(doc.requesterId?._id) === me ? doc.receiverId : doc.requesterId
+    return {
+      friendshipId: doc._id,
+      friendId: peer?._id,
+      name: peer?.name,
+      email: peer?.email,
+      avatar: peer?.avatarUrl,
+      presence: peer?.status,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt
+    }
+  })
+
+  const last = data[data.length - 1]
+  const nextCursor = hasMore && last ? encodeCursor(last) : null
+
+  return { items, nextCursor, hasMore, pageSize }
 }
 
 export async function listPendingRequests({ userId, cursor, limit = 20 }) {
-  // Validation
-  if (!validateObjectId(userId)) {
-    throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
-  }
+  if (!validateObjectId(userId)) throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
 
-  const requests = await FriendRepository.findPendingRequests(userId, {
-    limit: Math.min(limit, VALIDATION_LIMITS.MAX_LIMIT),
-    cursor,
+  const pageSize = Math.min(limit, VALIDATION_LIMITS.MAX_LIMIT)
+  const cur = decodeCursor(cursor)
+  const cursorCond = buildCursorCond(cur)
+
+  const rows = await FriendRepository.findPendingRequests(userId, {
+    limit: pageSize + 1,
+    cursorCond,
     populate: true
   })
 
-  const nextCursor = requests.length ? requests[requests.length - 1].createdAt.toISOString() : null
+  const hasMore = rows.length > pageSize
+  const data = hasMore ? rows.slice(0, pageSize) : rows
+  const nextCursor = hasMore ? encodeCursor(data[data.length - 1]) : null
 
-  return { 
-    requests, 
-    nextCursor,
-    total: requests.length
-  }
+  return { items: data, nextCursor, hasMore, pageSize }
 }
 
 export async function getFriendshipStats({ userId }) {
-  // Validation
-  if (!validateObjectId(userId)) {
-    throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
-  }
-
+  if (!validateObjectId(userId)) throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
   const stats = await FriendRepository.getStats(userId)
-  
   return {
     total: Object.values(stats).reduce((sum, count) => sum + count, 0),
-    ...stats
+    stats
   }
 }
 
 export async function checkFriendshipStatus({ userId1, userId2 }) {
-  // Validation
   if (!validateObjectId(userId1) || !validateObjectId(userId2)) {
     throwError(FRIENDSHIP_ERRORS.INVALID_ID, 400)
   }
-
   const friendship = await FriendRepository.findFriendship(userId1, userId2)
-  
-  if (!friendship) {
-    return { status: 'none' }
-  }
-
+  if (!friendship) return { status: 'none' }
   return {
     status: friendship.status,
     isBlocked: friendship.status === FRIENDSHIP_STATUS.BLOCKED,
