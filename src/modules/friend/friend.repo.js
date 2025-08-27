@@ -1,57 +1,53 @@
 import mongoose from 'mongoose'
 
 const FriendshipSchema = new mongoose.Schema({
-  requesterId: { 
-    type: mongoose.Types.ObjectId, 
-    ref: 'User', 
-    index: true, 
-    required: true 
+  requesterId: {
+    type: mongoose.Types.ObjectId,
+    ref: 'User',
+    index: true,
+    required: true
   },
-  receiverId: { 
-    type: mongoose.Types.ObjectId, 
-    ref: 'User', 
-    index: true, 
-    required: true 
+  receiverId: {
+    type: mongoose.Types.ObjectId,
+    ref: 'User',
+    index: true,
+    required: true
   },
-  status: { 
-    type: String, 
-    enum: ['pending', 'accepted', 'blocked', 'rejected'], 
-    default: 'pending', 
-    index: true 
+  status: {
+    type: String,
+    enum: ['pending', 'accepted', 'blocked', 'rejected'],
+    default: 'pending',
+    index: true
   },
   blockedBy: {
     type: mongoose.Types.ObjectId,
     ref: 'User'
   },
-  blockedAt: {
-    type: Date
-  }
-}, { 
-  timestamps: true 
-})
+  blockedAt: { type: Date }
+}, { timestamps: true })
 
-// Compound indexes
+// Indexes
 FriendshipSchema.index({ requesterId: 1, receiverId: 1 }, { unique: true })
 FriendshipSchema.index({ receiverId: 1, status: 1 })
 FriendshipSchema.index({ requesterId: 1, status: 1 })
+// cho keyset pagination theo updatedAt + _id
+FriendshipSchema.index({ requesterId: 1, status: 1, updatedAt: -1, _id: -1 })
+FriendshipSchema.index({ receiverId: 1, status: 1, updatedAt: -1, _id: -1 })
 FriendshipSchema.index({ blockedBy: 1 })
 
 export const Friendship = mongoose.model('Friendship', FriendshipSchema)
 
 export class FriendRepository {
-  // Basic CRUD operations
+  // Basic CRUD
   static async findById(id, projection = {}) {
     return Friendship.findById(id, projection).lean()
   }
-
   static async create(friendshipData) {
     return Friendship.create(friendshipData)
   }
-
   static async updateById(id, updateData, options = {}) {
     return Friendship.findByIdAndUpdate(id, updateData, { new: true, ...options })
   }
-
   static async deleteById(id) {
     return Friendship.findByIdAndDelete(id)
   }
@@ -66,32 +62,16 @@ export class FriendRepository {
     }, projection).lean()
   }
 
-  // Find friendships by user and status
+  // Find friendships by user and status (keyset-ready)
   static async findFriendshipsByUser(userId, status, options = {}) {
-    const { limit = 50, cursor, populate = false } = options
-    
+    const { limit = 50, cursorCond, populate = false } = options
+
     let query = Friendship.find({
-      $or: [
-        { requesterId: userId },
-        { receiverId: userId }
-      ],
-      status
+      $or: [{ requesterId: userId }, { receiverId: userId }],
+      status,
+      ...(cursorCond || {})
     })
-
-    if (cursor) {
-      const cur = new Date(cursor)
-      if (!isNaN(cur)) {
-        query = query.find({
-          $or: [
-            { createdAt: { $lt: cur } },
-            { createdAt: cur, _id: { $lt: new mongoose.Types.ObjectId('ffffffffffffffffffffffff') } }
-          ]
-        })
-      }
-    }
-
-    query = query
-      .sort({ createdAt: -1 })
+      .sort({ updatedAt: -1, _id: -1 })
       .limit(limit)
 
     if (populate) {
@@ -100,53 +80,36 @@ export class FriendRepository {
         { path: 'receiverId', select: 'name email avatarUrl status' }
       ])
     }
-
     return query.lean()
   }
 
-  // Find pending requests for a user
+  // Find pending requests for a user (keyset-ready)
   static async findPendingRequests(userId, options = {}) {
-    const { limit = 20, cursor, populate = false } = options
-    
+    const { limit = 20, cursorCond, populate = false } = options
+
     let query = Friendship.find({
       receiverId: userId,
-      status: 'pending'
+      status: 'pending',
+      ...(cursorCond || {})
     })
-
-    if (cursor) {
-      const cur = new Date(cursor)
-      if (!isNaN(cur)) {
-        query = query.find({
-          $or: [
-            { createdAt: { $lt: cur } },
-            { createdAt: cur, _id: { $lt: new mongoose.Types.ObjectId('ffffffffffffffffffffffff') } }
-          ]
-        })
-      }
-    }
-
-    query = query
-      .sort({ createdAt: -1 })
+      .sort({ updatedAt: -1, _id: -1 })
       .limit(limit)
 
     if (populate) {
       query = query.populate('requesterId', 'name email avatarUrl status')
     }
-
     return query.lean()
   }
 
   // Update friendship status
   static async updateStatus(requesterId, receiverId, status, additionalData = {}) {
     const updateData = { status, ...additionalData }
-    
     if (status === 'blocked') {
       updateData.blockedBy = requesterId
       updateData.blockedAt = new Date()
     } else {
       updateData.$unset = { blockedBy: 1, blockedAt: 1 }
     }
-
     return Friendship.findOneAndUpdate(
       { requesterId, receiverId },
       { $set: updateData },
@@ -164,38 +127,26 @@ export class FriendRepository {
     })
   }
 
-  // Get friendship statistics
+  // Aggregate stats by status
   static async getStats(userId) {
     const stats = await Friendship.aggregate([
-      {
-        $match: {
+      { $match: {
           $or: [
             { requesterId: new mongoose.Types.ObjectId(userId) },
             { receiverId: new mongoose.Types.ObjectId(userId) }
           ]
         }
       },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
-      }
+      { $group: { _id: '$status', count: { $sum: 1 } } }
     ])
-
-    return stats.reduce((acc, stat) => {
-      acc[stat._id] = stat.count
-      return acc
-    }, {})
+    return stats.reduce((acc, s) => { acc[s._id] = s.count; return acc }, {})
   }
 
-  // Check if users are friends
   static async areFriends(userId1, userId2) {
     const friendship = await this.findFriendship(userId1, userId2, { status: 1 })
     return friendship?.status === 'accepted'
   }
 
-  // Check if user is blocked
   static async isBlocked(userId1, userId2) {
     const friendship = await this.findFriendship(userId1, userId2, { status: 1, blockedBy: 1 })
     return friendship?.status === 'blocked' && friendship?.blockedBy?.toString() === userId1

@@ -1,4 +1,4 @@
-import { Router } from 'express'
+﻿import { Router } from 'express'
 import { authRequired } from '../common/auth/auth.js'
 import * as friendService from './friend.service.js'
 
@@ -7,29 +7,27 @@ router.use(authRequired)
 
 /**
  * @swagger
- * /v1/friend/request:
+ * /v1/friend/request/{receiverId}:
  *   post:
  *     tags: ["Friends"]
  *     summary: Send a friend request
  *     security:
  *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               receiverId:
- *                 type: string
+ *     parameters:
+ *       - in: path
+ *         name: receiverId
+ *         required: true
+ *         schema:
+ *           type: string
  *     responses:
  *       201:
  *         description: Friendship created
  */
 
-router.post('/request', async (req, res, next) => {
+
+router.post('/request/:receiverId', async (req, res, next) => {
   try {
-    const { receiverId } = req.body
+    const { receiverId } = req.params
     const friendship = await friendService.requestFriend({ 
       requesterId: req.user.id, 
       receiverId 
@@ -42,28 +40,26 @@ router.post('/request', async (req, res, next) => {
 
 /**
  * @swagger
- * /v1/friend/accept:
+ * /v1/friend/accept/{requesterId}:
  *   post:
  *     tags: ["Friends"]
  *     summary: Accept a friend request
  *     security:
  *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               requesterId:
- *                 type: string
+ *     parameters:
+ *       - in: path
+ *         name: requesterId
+ *         required: true
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: Friendship accepted
  */
-router.post('/accept', async (req, res, next) => {
+
+router.post('/accept/:requesterId', async (req, res, next) => {
   try {
-    const { requesterId } = req.body
+    const { requesterId } = req.params
     const friendship = await friendService.acceptFriend({ 
       requesterId, 
       receiverId: req.user.id 
@@ -76,28 +72,26 @@ router.post('/accept', async (req, res, next) => {
 
 /**
  * @swagger
- * /v1/friend/reject:
+ * /v1/friend/reject/{requesterId}:
  *   post:
  *     tags: ["Friends"]
  *     summary: Reject a friend request
  *     security:
  *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               requesterId:
- *                 type: string
+ *     parameters:
+ *       - in: path
+ *         name: requesterId
+ *         required: true
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: Friendship rejected
  */
-router.post('/reject', async (req, res, next) => {
+
+router.post('/reject/:requesterId', async (req, res, next) => {
   try {
-    const { requesterId } = req.body
+    const { requesterId } = req.params
     const friendship = await friendService.rejectFriend({ 
       requesterId, 
       receiverId: req.user.id 
@@ -110,28 +104,26 @@ router.post('/reject', async (req, res, next) => {
 
 /**
  * @swagger
- * /v1/friend/block:
+ * /v1/friend/block/{userId}:
  *   post:
  *     tags: ["Friends"]
  *     summary: Block a user
  *     security:
  *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               userId:
- *                 type: string
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: User blocked
  */
-router.post('/block', async (req, res, next) => {
+
+router.post('/block/:userId', async (req, res, next) => {
   try {
-    const { userId } = req.body
+    const { userId } = req.params
     const blocked = await friendService.blockUser({ 
       userId: req.user.id, 
       otherId: userId 
@@ -144,28 +136,26 @@ router.post('/block', async (req, res, next) => {
 
 /**
  * @swagger
- * /v1/friend/unblock:
+ * /v1/friend/unblock/{userId}:
  *   post:
  *     tags: ["Friends"]
  *     summary: Unblock a user
  *     security:
  *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               userId:
- *                 type: string
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: User unblocked
  */
-router.post('/unblock', async (req, res, next) => {
+
+router.post('/unblock/:userId', async (req, res, next) => {
   try {
-    const { userId } = req.body
+    const { userId } = req.params
     const result = await friendService.unblockUser({ 
       userId: req.user.id, 
       otherId: userId 
@@ -178,28 +168,27 @@ router.post('/unblock', async (req, res, next) => {
 
 /**
  * @swagger
- * /v1/friend/remove:
- *   post:
+ * /v1/friend/{userId}:
+ *   delete:
  *     tags: ["Friends"]
  *     summary: Remove a friend
  *     security:
  *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               userId:
- *                 type: string
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: Friendship removed
  */
-router.post('/remove', async (req, res, next) => {
+
+
+router.delete('/:userId', async (req, res, next) => {
   try {
-    const { userId } = req.body
+    const { userId } = req.params
     const result = await friendService.removeFriend({ 
       userId: req.user.id, 
       otherId: userId 
