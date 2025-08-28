@@ -61,6 +61,7 @@ export function registerChatNamespace(nsp) {
 
     try {
       User.findByIdAndUpdate(userId, { $set: { status: "online" } }).exec();
+      nsp.emit("presence:update", { userId, status: "online" });
     } catch (e) {
       logger.error(e, "set online failed");
     }
@@ -77,6 +78,7 @@ export function registerChatNamespace(nsp) {
             User.findByIdAndUpdate(userId, {
               $set: { status: "offline", lastOnline: new Date() },
             }).exec();
+            nsp.emit("presence:update", { userId, status: "offline", lastOnline: new Date() });
           }
         }, 5000)
       } catch (e) { logger.error(e, "set disconnect failed"); }

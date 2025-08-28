@@ -12,6 +12,13 @@ import mongoose from 'mongoose'
 import { specs, swaggerUiOptions } from './modules/common/docs/swagger.js'
 import swaggerUi from 'swagger-ui-express'
 
+export const makeCorsAllowlist = () => {
+  const raw = process.env.CORS_ORIGIN || ''
+  const list = raw.split(',').map(s => s.trim()).filter(Boolean)
+  const allowAll = list.includes('*')
+  return { list, allowAll }
+}
+
 const app = express()
 
 // Observability
@@ -20,20 +27,19 @@ app.use(metricsMiddleware)
 
 // Security + perf
 app.use(helmet())
-const rawOrigins = process.env.CORS_ORIGIN || ''
-const CORS_LIST = rawOrigins.split(',').map(s => s.trim()).filter(Boolean)
-const ALLOW_ALL = CORS_LIST.includes('*')
 
+const { list: CORS_LIST, allowAll: ALLOW_ALL } = makeCorsAllowlist()
 const corsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true) // allow server-to-server, curl, Postman
+    // Cho phép request không có Origin (curl/healthcheck)
+    if (!origin) return cb(null, true)
     if (ALLOW_ALL || CORS_LIST.includes(origin)) return cb(null, true)
-    return cb(new Error('CORS_NOT_ALLOWED'), false)
+    return cb(new Error('CORS_NOT_ALLOWED'))
   },
   credentials: true,
-  methods: ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  maxAge: 86400
+  maxAge: 86400,
 }
 app.use(cors(corsOptions))
 app.options('*', cors({ ...corsOptions, origin: true }))
@@ -44,7 +50,7 @@ app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true, limit: '2mb' }))
 
 // ===== Health & Metrics =====
-app.get('/health', async (req, res) => {
+app.get('/health', async (_req, res) => {
   try {
     const health = {
       status: 'ok',
@@ -53,17 +59,13 @@ app.get('/health', async (req, res) => {
       version: process.env.npm_package_version || '1.0.0',
       services: {
         mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-        redis: await checkRedisHealth() ? 'connected' : 'disconnected'
-      }
+        redis: await checkRedisHealth() ? 'connected' : 'disconnected',
+      },
     }
     const allHealthy = health.services.mongodb === 'connected' && health.services.redis === 'connected'
     res.status(allHealthy ? 200 : 503).json(health)
   } catch (error) {
-    res.status(503).json({
-      status: 'error',
-      timestamp: new Date().toISOString(),
-      error: error.message
-    })
+    res.status(503).json({ status: 'error', timestamp: new Date().toISOString(), error: error.message })
   }
 })
 app.use(process.env.METRICS_ROUTE || '/metrics', metricsRouter)
@@ -75,12 +77,10 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerUiOptions))
 app.use('/v1', apiRouter)
 
 // ===== 404 handler =====
-app.use((req, res) => {
-  res.status(404).json({ error: 'NOT_FOUND' })
-})
+app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND' }))
 
 // ===== Error handler =====
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   logger.error({ err, path: req.path, method: req.method }, 'Request error')
   res.status(err.status || 500).json({ error: err.message || 'SERVER_ERROR' })
 })

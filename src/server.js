@@ -1,37 +1,42 @@
-﻿// import dotenv from 'dotenv'
-// dotenv.config({ path: './.env' })
-// console.log('MONGO_URI:', process.env.MONGO_URI)
-
-import http from 'http'
+﻿import http from 'http'
 import { Server } from 'socket.io'
-import app from './app.js'
+import app, { makeCorsAllowlist } from './app.js'
 import { connectMongo } from './modules/common/db/mongo.js'
 import { createAdapter } from '@socket.io/redis-adapter'
 import { redisPub, redisSub } from './modules/common/cache/redis.js'
 import { registerChatNamespace } from './modules/chat/chat.socket.js'
 import { logger } from './modules/common/obs/logger.js'
 
-// connect DB
 connectMongo()
 
-const port = process.env.PORT || 8080
+const port = Number(process.env.PORT || 8081)
 const server = http.createServer(app)
 
-// Socket.IO
+const { list: CORS_LIST, allowAll: ALLOW_ALL } = makeCorsAllowlist()
+
 const io = new Server(server, {
   path: '/socket.io',
-  cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? '*', credentials: true },
+  cors: {
+    origin: ALLOW_ALL
+      ? (origin, cb) => cb(null, true)
+      : CORS_LIST,
+    credentials: true,
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  },
   pingInterval: 20000,
   pingTimeout: 25000,
-  connectionStateRecovery: { maxDisconnectionDuration: 120000 }
+  connectionStateRecovery: { maxDisconnectionDuration: 120000 },
 })
 
-// Redis adapter
 io.adapter(createAdapter(redisPub, redisSub))
 
-// Namespaces
 registerChatNamespace(io.of('/chat'))
 
+io.engine.on('connection_error', (err) => {
+  console.log('engineio error:', err.code, err.message, err.context)
+})
+
 server.listen(port, () => {
-  logger.info({ port }, 'HTTP server listening')
+  logger.info({ port }, 'HTTP + WS listening')
 })
