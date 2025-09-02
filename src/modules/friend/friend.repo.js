@@ -151,4 +151,32 @@ export class FriendRepository {
     const friendship = await this.findFriendship(userId1, userId2, { status: 1, blockedBy: 1 })
     return friendship?.status === 'blocked' && friendship?.blockedBy?.toString() === userId1
   }
+
+  // Fetch friendship status for many others relative to one user
+  static async findFriendshipsWith(userId, otherIds) {
+    const rows = await Friendship.find({
+      $or: [
+        { requesterId: userId, receiverId: { $in: otherIds } },
+        { receiverId: userId, requesterId: { $in: otherIds } }
+      ]
+    }, { requesterId: 1, receiverId: 1, status: 1, blockedBy: 1 }).lean()
+    return rows
+  }
+
+  // Get ids blocked in either direction with this user
+  static async findMutualBlockedIds(userId, otherIds) {
+    const rows = await Friendship.find({
+      status: 'blocked',
+      $or: [
+        { requesterId: userId, receiverId: { $in: otherIds } },
+        { receiverId: userId, requesterId: { $in: otherIds } }
+      ]
+    }, { requesterId: 1, receiverId: 1 }).lean()
+    const blocked = new Set()
+    for (const r of rows) {
+      const other = String(r.requesterId) === String(userId) ? String(r.receiverId) : String(r.requesterId)
+      blocked.add(other)
+    }
+    return blocked
+  }
 }

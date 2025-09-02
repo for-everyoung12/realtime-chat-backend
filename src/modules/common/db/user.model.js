@@ -36,5 +36,6 @@ UserSchema.index({ email: 1 }, { unique: true })
 UserSchema.index({ lastOnline: -1 })
 UserSchema.index({ role: 1, isActive: 1 })
 UserSchema.index({ isActive: 1, isVerified: 1 })         
+UserSchema.index({ updatedAt: -1, _id: -1 })
 
 export const User = mongoose.model('User', UserSchema)

@@ -12,7 +12,8 @@ import {
 import { redis } from "../common/cache/redis.js";
 import { User } from "../common/db/user.model.js";
 import { logger } from "../common/obs/logger.js";
-import { isMember } from '../common/cache/member.js'
+import { isMember } from "../common/cache/member.js";
+
 const TYPING_TTL_MS = 2500;
 
 // ---- helper
@@ -54,17 +55,39 @@ export function registerChatNamespace(nsp) {
     next();
   });
 
+  // tiện ích: chỉ emit presence cho các socket đã subscribe user đó
+  function emitPresence(userId, payload) {
+    for (const [, s] of nsp.sockets) {
+      if (s.data?.subscriptions?.has(userId)) {
+        s.emit("presence:update", payload);
+      }
+    }
+  }
+
   nsp.on("connection", (socket) => {
     const typingTimers = new Map();
     const userId = String(socket.data.userId);
+    const key = `presence:sockets:${userId}`; // set các socket.id của user
     wsConnectedGauge.inc();
 
-    try {
-      User.findByIdAndUpdate(userId, { $set: { status: "online" } }).exec();
-      nsp.emit("presence:update", { userId, status: "online" });
-    } catch (e) {
-      logger.error(e, "set online failed");
-    }
+    // khởi tạo subscriptions per-socket
+    socket.data.subscriptions = new Set();
+
+    (async () => {
+      try {
+        await redis.sadd(key, socket.id);
+        // optional TTL cho set để dọn dẹp
+        await redis.expire(key, 24 * 60 * 60);
+        await User.findByIdAndUpdate(userId, { $set: { status: "online" } }).exec();
+
+        // phát cho ai đã subscribe
+        emitPresence(userId, { userId, status: "online" });
+        // hoặc broadcast toàn namespace nếu muốn:
+        // nsp.emit("presence:update", { userId, status: "online" });
+      } catch (e) {
+        logger.error(e, "set online failed");
+      }
+    })();
 
     socket.on("disconnect", async () => {
       wsConnectedGauge.dec();
@@ -73,15 +96,51 @@ export function registerChatNamespace(nsp) {
         await redis.srem(key, socket.id);
 
         setTimeout(async () => {
-          const remain = await redis.scard(key);
-          if (remain.length === 0) {
-            User.findByIdAndUpdate(userId, {
+          const remain = await redis.scard(key); // số phiên còn lại
+          if (remain === 0) {
+            await User.findByIdAndUpdate(userId, {
               $set: { status: "offline", lastOnline: new Date() },
             }).exec();
-            nsp.emit("presence:update", { userId, status: "offline", lastOnline: new Date() });
+            emitPresence(userId, {
+              userId,
+              status: "offline",
+              lastOnline: new Date(),
+            });
+            // hoặc broadcast:
+            // nsp.emit("presence:update", { userId, status: "offline", lastOnline: new Date() });
           }
-        }, 5000)
-      } catch (e) { logger.error(e, "set disconnect failed"); }
+        }, 5000);
+      } catch (e) {
+        logger.error(e, "set disconnect failed");
+      }
+    });
+
+    // presence - subscribe
+    socket.on("presence:subscribe", ({ userIds }) => {
+      (userIds || []).forEach((id) => socket.data.subscriptions.add(String(id)));
+    });
+
+    // presence - unsubscribe
+    socket.on("presence:unsubscribe", ({ userIds }) => {
+      (userIds || []).forEach((id) => socket.data.subscriptions.delete(String(id)));
+    });
+
+    // presence - who
+    socket.on("presence:who", async ({ userIds }, cb) => {
+      try {
+        const ids = (userIds || []).map(String);
+        const users = await User.find({ _id: { $in: ids } })
+          .select("_id status lastOnline")
+          .lean();
+
+        const statuses = Object.fromEntries(
+          users.map((u) => [String(u._id), u.status || "offline"])
+        );
+
+        cb && cb({ ok: true, statuses });
+      } catch (e) {
+        cb && cb({ ok: false, error: e.message || "WHO_FAILED" });
+      }
     });
 
     socket.on("join", async ({ conversationId }, cb) => {
@@ -113,7 +172,7 @@ export function registerChatNamespace(nsp) {
         const timer = setTimeout(() => {
           try {
             cb && cb({ ok: true, id: String(msg._id) });
-          } catch { }
+          } catch {}
         }, 800);
         try {
           cb && cb({ ok: true, id: String(msg._id) });
@@ -163,6 +222,7 @@ export function registerChatNamespace(nsp) {
       typingTimers.set(conversationId, t);
       wsBroadcastTotal.labels("typing").inc();
     });
+
     socket.on("typing:stop", async ({ conversationId }) => {
       if (!(await isMember(conversationId, userId))) return;
       nsp
