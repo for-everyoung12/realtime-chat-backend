@@ -48,6 +48,29 @@ export class UserRepository {
       .lean()
   }
 
+  // Search users with keyset pagination (updatedAt, _id)
+  static async searchUsers(filters = {}, options = {}) {
+    const { cursor, limit = 20, projection = { passwordHash: 0 } } = options
+
+    let query = User.find(filters)
+
+    if (cursor && cursor.t && cursor.id) {
+      query = query.find({
+        $or: [
+          { updatedAt: { $lt: new Date(cursor.t) } },
+          { updatedAt: new Date(cursor.t), _id: { $lt: new mongoose.Types.ObjectId(cursor.id) } }
+        ]
+      })
+    }
+
+    return query
+      .sort({ updatedAt: -1, _id: -1 })
+      .limit(limit)
+      .select(projection)
+      .maxTimeMS(350)
+      .lean()
+  }
+
   // Admin operations
   static async getStats() {
     return User.aggregate([

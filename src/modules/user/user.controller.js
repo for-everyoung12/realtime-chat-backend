@@ -10,8 +10,10 @@ import {
   unbanUser, 
   getUserStats,
   updateUserProfile,
-  getUserProfile
+  getUserProfile,
+  searchUsers
 } from './user.service.js'
+import { sendLimiter as searchLimiter } from '../common/http/middlewares.js'
 
 const router = Router()
 
@@ -48,6 +50,78 @@ router.post('/avatar', authRequired, avatarUpload.single('avatar'), async (req, 
     if (e.message === 'UNSUPPORTED_MIME') return res.status(415).json({ error: 'UNSUPPORTED_MIME' })
     if (e.message?.includes('File too large')) return res.status(413).json({ error: 'FILE_TOO_LARGE' })
     res.status(500).json({ error: 'UPLOAD_FAILED' })
+  }
+})
+
+
+/**
+ * @swagger
+ * /v1/user/search:
+ *   get:
+ *     tags: ["Users"]
+ *     summary: Search users to invite
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema:
+ *           type: string
+ *           maxLength: 100
+ *         description: Search by name or email (case-insensitive)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 50
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Base64 cursor for keyset pagination
+ *     responses:
+ *       200:
+ *         description: Search results
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 rows:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       avatarUrl:
+ *                         type: string
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       friendship:
+ *                         type: object
+ *                         properties:
+ *                           status:
+ *                             type: string
+ *                             enum: [none, pending, accepted, blocked]
+ *                 nextCursor:
+ *                   type: string
+ */
+// GET /v1/user/search?q=...&cursor=...&limit=20
+router.get('/search', authRequired, searchLimiter, async (req, res) => {
+  try {
+    const { q, cursor, limit } = req.query
+    const data = await searchUsers({ currentUserId: req.user.id, q, cursor, limit: Math.min(Number(limit) || 20, 50) })
+    res.json(data)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
   }
 })
 
